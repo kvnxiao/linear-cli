@@ -1,279 +1,199 @@
-# Linear CLI
+# linear-cli
 
-A powerful command-line interface for [Linear.app](https://linear.app) built with Rust. Manage your projects, issues, labels, teams, and more directly from the terminal.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+
+A fast, powerful command-line interface for [Linear](https://linear.app) built with Rust.
+
+## Features
+
+- **Full API Coverage** - Projects, issues, labels, teams, users, cycles, comments, documents
+- **Git Integration** - Checkout branches for issues automatically
+- **Local Sync** - Sync local project folders with Linear
+- **Search** - Find issues and projects instantly
+- **Fast** - Native Rust binary, no runtime dependencies
 
 ## Installation
 
-### Prerequisites
-
-- [Rust](https://rustup.rs/) (1.70 or later)
-- A Linear API key ([get one here](https://linear.app/settings/api))
-
-### Build from Source
+### From Source
 
 ```bash
-git clone https://github.com/your-org/linear-cli.git
+git clone https://github.com/Finesssee/linear-cli.git
 cd linear-cli
 cargo build --release
 ```
 
-The binary will be available at `target/release/linear-cli` (or `linear-cli.exe` on Windows).
-
-Optionally, add it to your PATH:
+### Add to PATH
 
 ```bash
 # Linux/macOS
-cp target/release/linear-cli ~/.local/bin/
+sudo cp target/release/linear-cli /usr/local/bin/
 
-# Windows (PowerShell)
-Copy-Item target\release\linear-cli.exe C:\Users\$env:USERNAME\bin\
+# Windows (PowerShell as Admin)
+Copy-Item target\release\linear-cli.exe C:\Windows\System32\
 ```
 
-## Configuration
-
-Before using the CLI, you must configure your Linear API key:
+## Quick Start
 
 ```bash
-linear config set-key lin_api_XXXXXXXXXXXX
+# 1. Configure your API key (get one at https://linear.app/settings/api)
+linear-cli config set-key lin_api_xxxxxxxxxxxxx
+
+# 2. List your projects
+linear-cli projects list
+
+# 3. Create an issue
+linear-cli issues create "Fix login bug" --team Engineering --priority 2
 ```
 
-To view your current configuration:
+## Commands
 
-```bash
-linear config show
-```
-
-Configuration is stored in:
-- **Linux/macOS**: `~/.config/linear-cli/config.toml`
-- **Windows**: `%APPDATA%\linear-cli\config.toml`
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `projects` | `p` | Manage projects |
+| `issues` | `i` | Manage issues |
+| `labels` | `l` | Manage labels |
+| `teams` | `t` | List and view teams |
+| `users` | `u` | List and view users |
+| `cycles` | `c` | Manage sprint cycles |
+| `comments` | `cm` | Manage issue comments |
+| `documents` | `d` | Manage documents |
+| `search` | `s` | Search issues and projects |
+| `sync` | `sy` | Sync local folders with Linear |
+| `statuses` | `st` | View issue statuses |
+| `git` | `g` | Git branch operations |
+| `config` | - | CLI configuration |
 
 ## Usage Examples
 
 ### Projects
 
 ```bash
-# List all projects
-linear projects list
-linear p ls                    # Short form
-
-# Include archived projects
-linear projects list --archived
-
-# Get project details
-linear projects get PROJECT_ID
-
-# Create a new project
-linear projects create "My Project" --team "Engineering"
-linear projects create "My Project" -t "Engineering" -d "Description" -c "#FF5500"
-
-# Update a project
-linear projects update PROJECT_ID --name "New Name"
-linear projects update PROJECT_ID -d "Updated description" -c "#00FF00"
-
-# Delete a project
-linear projects delete PROJECT_ID --force
-
-# Add labels to a project
-linear projects add-labels PROJECT_ID label-id-1 label-id-2
+linear-cli p list                              # List all projects
+linear-cli p list --archived                   # Include archived
+linear-cli p get PROJECT_ID                    # View project details
+linear-cli p create "Q1 Roadmap" -t Engineering
+linear-cli p update PROJECT_ID --name "New Name"
+linear-cli p delete PROJECT_ID --force
+linear-cli p add-labels PROJECT_ID LABEL_ID
 ```
 
 ### Issues
 
 ```bash
-# List issues
-linear issues list
-linear i ls                    # Short form
-
-# Filter issues by team, project, or state
-linear issues list --team "Engineering"
-linear issues list --project "Q1 Roadmap"
-linear issues list --state "In Progress"
-
-# Get issue details
-linear issues get ISSUE_ID
-
-# Create a new issue
-linear issues create "Fix login bug" --team "Engineering"
-linear issues create "Add feature" -t "Product" -d "Detailed description" -p "High"
-
-# Update an issue
-linear issues update ISSUE_ID --state "Done"
-linear issues update ISSUE_ID --assignee "john@example.com"
-
-# Delete an issue
-linear issues delete ISSUE_ID --force
+linear-cli i list                              # List issues
+linear-cli i list -t Engineering -s "In Progress"
+linear-cli i get LIN-123                       # View issue details
+linear-cli i create "Bug fix" -t Eng -p 1      # Priority: 1=urgent, 4=low
+linear-cli i update LIN-123 -s Done
+linear-cli i delete LIN-123 --force
 ```
 
 ### Labels
 
 ```bash
-# List project labels (default)
-linear labels list
-linear l ls                    # Short form
-
-# List issue labels
-linear labels list --type issue
-
-# Create a project label
-linear labels create "Priority" --color "#FF0000"
-
-# Create an issue label
-linear labels create "Bug" --type issue --color "#DC2626"
-
-# Create a child label (grouped under parent)
-linear labels create "Critical" --parent PARENT_LABEL_ID
-
-# Delete a label
-linear labels delete LABEL_ID --force
-linear labels delete LABEL_ID --type issue --force
+linear-cli l list                              # List project labels
+linear-cli l list --type issue                 # List issue labels
+linear-cli l create "Feature" --color "#10B981"
+linear-cli l create "Bug" --type issue --color "#EF4444"
+linear-cli l delete LABEL_ID --force
 ```
 
-### Teams
+### Git Integration
 
 ```bash
-# List all teams
-linear teams list
-linear teams ls
-
-# Get team details
-linear teams get TEAM_ID
+linear-cli g checkout LIN-123                  # Create/checkout branch for issue
+linear-cli g branch LIN-123                    # Show branch name for issue
+linear-cli g create LIN-123                    # Create branch without checkout
+linear-cli g checkout LIN-123 -b custom-branch # Use custom branch name
 ```
 
-### Users
+### Sync Local Folders
 
 ```bash
-# List users in workspace
-linear users list
-
-# Get user details
-linear users get USER_ID
-linear users get me              # Get your own info
-```
-
-### Cycles
-
-```bash
-# List cycles for a team
-linear cycles list --team "Engineering"
-
-# Get current cycle
-linear cycles list --team "Engineering" --type current
-
-# Get previous/next cycle
-linear cycles list --team "Engineering" --type previous
-linear cycles list --team "Engineering" --type next
-```
-
-### Comments
-
-```bash
-# List comments on an issue
-linear comments list ISSUE_ID
-
-# Add a comment to an issue
-linear comments create ISSUE_ID "This is my comment"
-
-# Reply to a comment
-linear comments create ISSUE_ID "Reply text" --parent COMMENT_ID
-```
-
-### Documents
-
-```bash
-# List documents
-linear documents list
-
-# Get document details
-linear documents get DOCUMENT_ID
-
-# Create a document
-linear documents create "Document Title" --project "My Project"
-linear documents create "Title" -p "Project" --content "# Markdown content"
-
-# Update a document
-linear documents update DOCUMENT_ID --title "New Title"
+linear-cli sy status                           # Compare local folders with Linear
+linear-cli sy push -t Engineering              # Create Linear projects for local folders
+linear-cli sy push -t Engineering --dry-run    # Preview without creating
 ```
 
 ### Search
 
 ```bash
-# Search issues
-linear search "authentication bug"
-
-# Search with filters
-linear search "login" --team "Engineering"
+linear-cli s issues "authentication bug"
+linear-cli s projects "backend" --limit 10
 ```
 
-### Sync
+### Other Commands
 
 ```bash
-# Sync local data with Linear
-linear sync
+# Teams
+linear-cli t list
+linear-cli t get TEAM_ID
 
-# Sync specific resources
-linear sync --projects
-linear sync --issues
+# Users
+linear-cli u list
+linear-cli u get me
+
+# Cycles
+linear-cli c list -t Engineering
+linear-cli c current -t Engineering
+
+# Comments
+linear-cli cm list ISSUE_ID
+linear-cli cm create ISSUE_ID -b "This is a comment"
+
+# Documents
+linear-cli d list
+linear-cli d get DOC_ID
+linear-cli d create "Doc Title" -p PROJECT_ID
+
+# Statuses
+linear-cli st list -t Engineering
+linear-cli st get "In Progress" -t Engineering
+
+# Config
+linear-cli config set-key YOUR_API_KEY
+linear-cli config show
 ```
 
-## Command Reference
+## Configuration
 
-| Command | Alias | Description |
-|---------|-------|-------------|
-| `projects list` | `p ls` | List all projects |
-| `projects get <id>` | `p get` | Get project details |
-| `projects create <name>` | `p create` | Create a new project |
-| `projects update <id>` | `p update` | Update a project |
-| `projects delete <id>` | `p delete` | Delete a project |
-| `projects add-labels <id> <labels...>` | - | Add labels to a project |
-| `issues list` | `i ls` | List issues |
-| `issues get <id>` | `i get` | Get issue details |
-| `issues create <title>` | `i create` | Create a new issue |
-| `issues update <id>` | `i update` | Update an issue |
-| `issues delete <id>` | `i delete` | Delete an issue |
-| `labels list` | `l ls` | List labels |
-| `labels create <name>` | `l create` | Create a label |
-| `labels delete <id>` | `l delete` | Delete a label |
-| `teams list` | - | List teams |
-| `teams get <id>` | - | Get team details |
-| `users list` | - | List users |
-| `users get <id>` | - | Get user details |
-| `cycles list` | - | List cycles |
-| `comments list <issue-id>` | - | List comments |
-| `comments create <issue-id> <body>` | - | Create a comment |
-| `documents list` | - | List documents |
-| `documents get <id>` | - | Get document details |
-| `documents create <title>` | - | Create a document |
-| `documents update <id>` | - | Update a document |
-| `search <query>` | - | Search issues |
-| `sync` | - | Sync data with Linear |
-| `config set-key <key>` | - | Set API key |
-| `config show` | - | Show configuration |
-
-## Common Options
-
-| Option | Description |
-|--------|-------------|
-| `--help`, `-h` | Show help for any command |
-| `--version`, `-V` | Show version information |
-| `--force`, `-f` | Skip confirmation prompts (for delete operations) |
-| `--archived`, `-a` | Include archived items |
-
-## Output Format
-
-The CLI uses formatted tables for list output and detailed views for single items. All output is designed for terminal readability with color-coded status indicators.
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
+Configuration is stored at:
+- **Linux/macOS:** `~/.config/linear-cli/config.toml`
+- **Windows:** `%APPDATA%\linear-cli\config.toml`
 
 ## Claude Code Integration
 
-Add linear-cli to your Claude Code instructions with this one-liner:
+Add linear-cli to your Claude Code instructions:
 
 ```bash
 mkdir -p ~/.claude && echo "Linear CLI: Use \`linear-cli\` for Linear.app operations instead of MCP tools. Commands: projects (p), issues (i), labels (l), teams (t), users (u), cycles (c), comments (cm), documents (d), search (s), sync (sy), statuses (st), git (g), config. Examples: \`linear-cli p list\`, \`linear-cli i create \"Title\" --team ENG\`, \`linear-cli l create \"Label\" --type project --color \"#FF5733\"\`, \`linear-cli g checkout LIN-123\`, \`linear-cli sy status\`" >> ~/.claude/CLAUDE.md
 ```
 
+## Comparison with Official CLI
+
+| Feature | `@linear/cli` | `linear-cli` |
+|---------|---------------|--------------|
+| Last updated | 2021 | 2025 |
+| Create issues | ✓ | ✓ |
+| Git checkout | ✓ | ✓ |
+| List/manage projects | ✗ | ✓ |
+| CRUD for all resources | ✗ | ✓ |
+| Search | ✗ | ✓ |
+| Local folder sync | ✗ | ✓ |
+| Issue statuses | ✗ | ✓ |
+| Documents | ✗ | ✓ |
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+[MIT](LICENSE)

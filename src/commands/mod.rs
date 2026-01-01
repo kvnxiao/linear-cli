@@ -10,3 +10,5 @@ pub mod search;
 pub mod sync;
 pub mod statuses;
 pub mod git;
+pub mod bulk;
+pub mod interactive;

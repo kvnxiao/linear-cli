@@ -3,14 +3,28 @@ mod commands;
 mod config;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
-use commands::{issues, labels, projects, teams, users, cycles, comments, documents, search, sync, statuses, git};
+use clap::{Parser, Subcommand, ValueEnum};
+use commands::{issues, labels, projects, teams, users, cycles, comments, documents, search, sync, statuses, git, bulk, interactive};
+
+/// Output format for command results
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub enum OutputFormat {
+    /// Display results as formatted tables (default)
+    #[default]
+    Table,
+    /// Display results as raw JSON
+    Json,
+}
 
 #[derive(Parser)]
 #[command(name = "linear")]
 #[command(about = "A powerful CLI for Linear.app", long_about = None)]
 #[command(version)]
 struct Cli {
+    /// Output format (table or json)
+    #[arg(short, long, global = true, default_value = "table")]
+    output: OutputFormat,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -89,6 +103,15 @@ enum Commands {
         #[command(subcommand)]
         action: git::GitCommands,
     },
+    /// Bulk operations on multiple issues
+    #[command(alias = "b")]
+    Bulk {
+        #[command(subcommand)]
+        action: bulk::BulkCommands,
+    },
+    /// Interactive mode for issue management
+    #[command(alias = "int")]
+    Interactive,
     /// Configure CLI settings
     Config {
         #[command(subcommand)]
@@ -110,12 +133,13 @@ enum ConfigCommands {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+    let output = cli.output;
 
     match cli.command {
-        Commands::Projects { action } => projects::handle(action).await?,
-        Commands::Issues { action } => issues::handle(action).await?,
-        Commands::Labels { action } => labels::handle(action).await?,
-        Commands::Teams { action } => teams::handle(action).await?,
+        Commands::Projects { action } => projects::handle(action, output).await?,
+        Commands::Issues { action } => issues::handle(action, output).await?,
+        Commands::Labels { action } => labels::handle(action, output).await?,
+        Commands::Teams { action } => teams::handle(action, output).await?,
         Commands::Users { action } => users::handle(action).await?,
         Commands::Cycles { action } => cycles::handle(action).await?,
         Commands::Comments { action } => comments::handle(action).await?,
@@ -124,6 +148,8 @@ async fn main() -> Result<()> {
         Commands::Sync { action } => sync::handle(action).await?,
         Commands::Statuses { action } => statuses::handle(action).await?,
         Commands::Git { action } => git::handle(action).await?,
+        Commands::Bulk { action } => bulk::handle(action).await?,
+        Commands::Interactive => interactive::run().await?,
         Commands::Config { action } => match action {
             ConfigCommands::SetKey { key } => {
                 config::set_api_key(&key)?;

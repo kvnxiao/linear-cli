@@ -8,9 +8,15 @@ A fast, powerful command-line interface for [Linear](https://linear.app) built w
 ## Features
 
 - **Full API Coverage** - Projects, issues, labels, teams, users, cycles, comments, documents
-- **Git Integration** - Checkout branches for issues automatically
+- **Git Integration** - Checkout branches for issues, create PRs linked to issues
+- **jj (Jujutsu) Support** - First-class support for Jujutsu VCS alongside Git
 - **Local Sync** - Sync local project folders with Linear
 - **Search** - Find issues and projects instantly
+- **Interactive Mode** - TUI for browsing and managing issues interactively
+- **Multiple Workspaces** - Switch between Linear workspaces seamlessly
+- **Bulk Operations** - Perform actions on multiple issues at once
+- **JSON Output** - Machine-readable output for scripting and automation
+- **Shell Completions** - Tab completions for Bash, Zsh, Fish, and PowerShell
 - **Fast** - Native Rust binary, no runtime dependencies
 
 ## Installation
@@ -61,7 +67,12 @@ linear-cli issues create "Fix login bug" --team Engineering --priority 2
 | `search` | `s` | Search issues and projects |
 | `sync` | `sy` | Sync local folders with Linear |
 | `statuses` | `st` | View issue statuses |
-| `git` | `g` | Git branch operations |
+| `git` | `g` | Git branch operations and PR creation |
+| `jj` | `j` | Jujutsu VCS operations |
+| `workspace` | `ws` | Manage multiple workspaces |
+| `interactive` | `ui` | Interactive TUI mode |
+| `bulk` | `b` | Bulk operations on issues |
+| `completions` | - | Generate shell completions |
 | `config` | - | CLI configuration |
 
 ## Usage Examples
@@ -83,10 +94,14 @@ linear-cli p add-labels PROJECT_ID LABEL_ID
 ```bash
 linear-cli i list                              # List issues
 linear-cli i list -t Engineering -s "In Progress"
+linear-cli i list --output json                # Output as JSON
 linear-cli i get LIN-123                       # View issue details
+linear-cli i get LIN-123 --output json         # JSON output
 linear-cli i create "Bug fix" -t Eng -p 1      # Priority: 1=urgent, 4=low
 linear-cli i update LIN-123 -s Done
 linear-cli i delete LIN-123 --force
+linear-cli i start LIN-123                     # Start working: assigns to you, sets In Progress, creates branch
+linear-cli i stop LIN-123                      # Stop working: unassigns, resets status
 ```
 
 ### Labels
@@ -106,6 +121,18 @@ linear-cli g checkout LIN-123                  # Create/checkout branch for issu
 linear-cli g branch LIN-123                    # Show branch name for issue
 linear-cli g create LIN-123                    # Create branch without checkout
 linear-cli g checkout LIN-123 -b custom-branch # Use custom branch name
+linear-cli g pr LIN-123                        # Create PR linked to issue
+linear-cli g pr LIN-123 --draft                # Create draft PR
+linear-cli g pr LIN-123 --base main            # Specify base branch
+```
+
+### jj (Jujutsu) Integration
+
+```bash
+linear-cli j checkout LIN-123                  # Create bookmark for issue
+linear-cli j bookmark LIN-123                  # Show bookmark name for issue
+linear-cli j create LIN-123                    # Create bookmark without checkout
+linear-cli j pr LIN-123                        # Create PR using jj git push
 ```
 
 ### Sync Local Folders
@@ -156,6 +183,55 @@ linear-cli config set-key YOUR_API_KEY
 linear-cli config show
 ```
 
+### Interactive Mode
+
+```bash
+linear-cli ui                                  # Launch interactive TUI
+linear-cli ui issues                           # Browse issues interactively
+linear-cli ui projects                         # Browse projects interactively
+linear-cli interactive --team Engineering      # Filter by team
+```
+
+### Multiple Workspaces
+
+```bash
+linear-cli ws list                             # List configured workspaces
+linear-cli ws add personal                     # Add a new workspace
+linear-cli ws switch personal                  # Switch active workspace
+linear-cli ws current                          # Show current workspace
+linear-cli ws remove personal                  # Remove a workspace
+```
+
+### Bulk Operations
+
+```bash
+linear-cli b update -s Done LIN-1 LIN-2 LIN-3  # Update multiple issues
+linear-cli b assign --user me LIN-1 LIN-2      # Assign multiple issues
+linear-cli b label --add bug LIN-1 LIN-2       # Add label to multiple issues
+linear-cli b move --project "Q1" LIN-1 LIN-2   # Move issues to project
+linear-cli b delete --force LIN-1 LIN-2 LIN-3  # Delete multiple issues
+```
+
+### Shell Completions
+
+```bash
+# Generate completions for your shell
+linear-cli completions bash > ~/.bash_completion.d/linear-cli
+linear-cli completions zsh > ~/.zsh/completions/_linear-cli
+linear-cli completions fish > ~/.config/fish/completions/linear-cli.fish
+linear-cli completions powershell > linear-cli.ps1
+```
+
+### JSON Output
+
+```bash
+# Use --output json with any list or get command
+linear-cli i list --output json
+linear-cli p list --output json | jq '.[] | .name'
+linear-cli i get LIN-123 --output json
+linear-cli t list --output json
+```
+
 ## Configuration
 
 Configuration is stored at:
@@ -170,19 +246,27 @@ Add linear-cli to your Claude Code instructions:
 mkdir -p ~/.claude && echo "Linear CLI: Use \`linear-cli\` for Linear.app operations instead of MCP tools. Commands: projects (p), issues (i), labels (l), teams (t), users (u), cycles (c), comments (cm), documents (d), search (s), sync (sy), statuses (st), git (g), config. Examples: \`linear-cli p list\`, \`linear-cli i create \"Title\" --team ENG\`, \`linear-cli l create \"Label\" --type project --color \"#FF5733\"\`, \`linear-cli g checkout LIN-123\`, \`linear-cli sy status\`" >> ~/.claude/CLAUDE.md
 ```
 
-## Comparison with Official CLI
+## Comparison with Other CLIs
 
-| Feature | `@linear/cli` | `linear-cli` |
-|---------|---------------|--------------|
-| Last updated | 2021 | 2025 |
-| Create issues | ✓ | ✓ |
-| Git checkout | ✓ | ✓ |
-| List/manage projects | ✗ | ✓ |
-| CRUD for all resources | ✗ | ✓ |
-| Search | ✗ | ✓ |
-| Local folder sync | ✗ | ✓ |
-| Issue statuses | ✗ | ✓ |
-| Documents | ✗ | ✓ |
+| Feature | `@linear/cli` | `linear-go` | `linear-cli` |
+|---------|---------------|-------------|--------------|
+| Last updated | 2021 | 2023 | 2025 |
+| Create issues | ✓ | ✓ | ✓ |
+| Git checkout | ✓ | ✓ | ✓ |
+| Git PR creation | ✗ | ✗ | ✓ |
+| jj (Jujutsu) support | ✗ | ✗ | ✓ |
+| List/manage projects | ✗ | ✓ | ✓ |
+| CRUD for all resources | ✗ | ✗ | ✓ |
+| Search | ✗ | ✓ | ✓ |
+| Local folder sync | ✗ | ✗ | ✓ |
+| Issue statuses | ✗ | ✗ | ✓ |
+| Documents | ✗ | ✗ | ✓ |
+| Issue start/stop workflow | ✗ | ✗ | ✓ |
+| Interactive TUI mode | ✗ | ✗ | ✓ |
+| Multiple workspaces | ✗ | ✗ | ✓ |
+| Bulk operations | ✗ | ✗ | ✓ |
+| JSON output | ✗ | ✓ | ✓ |
+| Shell completions | ✗ | ✓ | ✓ |
 
 ## Contributing
 

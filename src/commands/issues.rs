@@ -2,9 +2,11 @@ use anyhow::Result;
 use clap::Subcommand;
 use colored::Colorize;
 use serde_json::json;
+use std::process::Command;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
+use crate::OutputFormat;
 
 #[derive(Subcommand)]
 pub enum IssueCommands {
@@ -83,6 +85,25 @@ pub enum IssueCommands {
         #[arg(short, long)]
         force: bool,
     },
+    /// Start working on an issue (set to In Progress and assign to me)
+    Start {
+        /// Issue ID or identifier (e.g., "LIN-123")
+        id: String,
+        /// Checkout a git branch for the issue
+        #[arg(short, long)]
+        checkout: bool,
+        /// Custom branch name (optional, uses issue's branch name by default)
+        #[arg(short, long)]
+        branch: Option<String>,
+    },
+    /// Stop working on an issue (return to backlog state)
+    Stop {
+        /// Issue ID or identifier (e.g., "LIN-123")
+        id: String,
+        /// Unassign the issue
+        #[arg(short, long)]
+        unassign: bool,
+    },
 }
 
 #[derive(Tabled)]
@@ -99,7 +120,7 @@ struct IssueRow {
     assignee: String,
 }
 
-pub async fn handle(cmd: IssueCommands) -> Result<()> {
+pub async fn handle(cmd: IssueCommands, output: OutputFormat) -> Result<()> {
     match cmd {
         IssueCommands::List {
             team,
@@ -107,8 +128,8 @@ pub async fn handle(cmd: IssueCommands) -> Result<()> {
             assignee,
             archived,
             limit,
-        } => list_issues(team, state, assignee, archived, limit).await,
-        IssueCommands::Get { id } => get_issue(&id).await,
+        } => list_issues(team, state, assignee, archived, limit, output).await,
+        IssueCommands::Get { id } => get_issue(&id, output).await,
         IssueCommands::Create {
             title,
             team,
@@ -117,7 +138,7 @@ pub async fn handle(cmd: IssueCommands) -> Result<()> {
             state,
             assignee,
             labels,
-        } => create_issue(&title, &team, description, priority, state, assignee, labels).await,
+        } => create_issue(&title, &team, description, priority, state, assignee, labels, output).await,
         IssueCommands::Update {
             id,
             title,
@@ -125,8 +146,10 @@ pub async fn handle(cmd: IssueCommands) -> Result<()> {
             priority,
             state,
             assignee,
-        } => update_issue(&id, title, description, priority, state, assignee).await,
+        } => update_issue(&id, title, description, priority, state, assignee, output).await,
         IssueCommands::Delete { id, force } => delete_issue(&id, force).await,
+        IssueCommands::Start { id, checkout, branch } => start_issue(&id, checkout, branch).await,
+        IssueCommands::Stop { id, unassign } => stop_issue(&id, unassign).await,
     }
 }
 
@@ -147,6 +170,7 @@ async fn list_issues(
     assignee: Option<String>,
     include_archived: bool,
     limit: u32,
+    output: OutputFormat,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
@@ -190,6 +214,12 @@ async fn list_issues(
 
     let result = client.query(query, Some(variables)).await?;
 
+    // Handle JSON output
+    if matches!(output, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(&result["data"]["issues"]["nodes"])?);
+        return Ok(());
+    }
+
     let empty = vec![];
     let issues = result["data"]["issues"]["nodes"]
         .as_array()
@@ -228,7 +258,7 @@ async fn list_issues(
     Ok(())
 }
 
-async fn get_issue(id: &str) -> Result<()> {
+async fn get_issue(id: &str, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -257,6 +287,12 @@ async fn get_issue(id: &str) -> Result<()> {
 
     if issue.is_null() {
         anyhow::bail!("Issue not found: {}", id);
+    }
+
+    // Handle JSON output
+    if matches!(output, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(issue)?);
+        return Ok(());
     }
 
     let identifier = issue["identifier"].as_str().unwrap_or("");
@@ -320,6 +356,7 @@ async fn create_issue(
     state: Option<String>,
     assignee: Option<String>,
     labels: Vec<String>,
+    output: OutputFormat,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
@@ -362,6 +399,13 @@ async fn create_issue(
 
     if result["data"]["issueCreate"]["success"].as_bool() == Some(true) {
         let issue = &result["data"]["issueCreate"]["issue"];
+
+        // Handle JSON output
+        if matches!(output, OutputFormat::Json) {
+            println!("{}", serde_json::to_string_pretty(issue)?);
+            return Ok(());
+        }
+
         let identifier = issue["identifier"].as_str().unwrap_or("");
         let issue_title = issue["title"].as_str().unwrap_or("");
         println!(
@@ -386,6 +430,7 @@ async fn update_issue(
     priority: Option<i32>,
     state: Option<String>,
     assignee: Option<String>,
+    output: OutputFormat,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
@@ -430,6 +475,13 @@ async fn update_issue(
 
     if result["data"]["issueUpdate"]["success"].as_bool() == Some(true) {
         let issue = &result["data"]["issueUpdate"]["issue"];
+
+        // Handle JSON output
+        if matches!(output, OutputFormat::Json) {
+            println!("{}", serde_json::to_string_pretty(issue)?);
+            return Ok(());
+        }
+
         println!(
             "{} Updated issue: {} {}",
             "+".green(),
@@ -466,6 +518,271 @@ async fn delete_issue(id: &str, force: bool) -> Result<()> {
         println!("{} Issue deleted", "+".green());
     } else {
         anyhow::bail!("Failed to delete issue");
+    }
+
+    Ok(())
+}
+
+// Git helper functions for start command
+fn run_git_command(args: &[&str]) -> Result<String> {
+    let output = Command::new("git")
+        .args(args)
+        .output()?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Git command failed: {}", stderr.trim());
+    }
+}
+
+fn branch_exists(branch: &str) -> bool {
+    run_git_command(&["rev-parse", "--verify", branch]).is_ok()
+}
+
+fn generate_branch_name(identifier: &str, title: &str) -> String {
+    // Convert title to kebab-case for branch name
+    let slug: String = title
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+
+    // Truncate if too long
+    let slug = if slug.len() > 50 {
+        slug[..50].trim_end_matches('-').to_string()
+    } else {
+        slug
+    };
+
+    format!("{}/{}", identifier.to_lowercase(), slug)
+}
+
+async fn start_issue(id: &str, checkout: bool, custom_branch: Option<String>) -> Result<()> {
+    let client = LinearClient::new()?;
+
+    // First, get the issue details including team info to find the "started" state
+    let query = r#"
+        query($id: String!) {
+            issue(id: $id) {
+                id
+                identifier
+                title
+                branchName
+                team {
+                    id
+                    states {
+                        nodes {
+                            id
+                            name
+                            type
+                        }
+                    }
+                }
+            }
+        }
+    "#;
+
+    let result = client.query(query, Some(json!({ "id": id }))).await?;
+    let issue = &result["data"]["issue"];
+
+    if issue.is_null() {
+        anyhow::bail!("Issue not found: {}", id);
+    }
+
+    let identifier = issue["identifier"].as_str().unwrap_or("");
+    let title = issue["title"].as_str().unwrap_or("");
+    let linear_branch = issue["branchName"].as_str().unwrap_or("").to_string();
+
+    // Find a "started" type state (In Progress)
+    let empty = vec![];
+    let states = issue["team"]["states"]["nodes"]
+        .as_array()
+        .unwrap_or(&empty);
+
+    let started_state = states.iter().find(|s| {
+        s["type"].as_str() == Some("started")
+    });
+
+    let state_id = match started_state {
+        Some(s) => s["id"].as_str().unwrap_or(""),
+        None => anyhow::bail!("No 'started' state found for this team"),
+    };
+
+    let state_name = started_state
+        .and_then(|s| s["name"].as_str())
+        .unwrap_or("In Progress");
+
+    // Update the issue: set state to "In Progress" and assign to me
+    let input = json!({
+        "stateId": state_id,
+        "assigneeId": "me"
+    });
+
+    let mutation = r#"
+        mutation($id: String!, $input: IssueUpdateInput!) {
+            issueUpdate(id: $id, input: $input) {
+                success
+                issue {
+                    identifier
+                    title
+                    state { name }
+                    assignee { name }
+                }
+            }
+        }
+    "#;
+
+    let result = client
+        .mutate(mutation, Some(json!({ "id": id, "input": input })))
+        .await?;
+
+    if result["data"]["issueUpdate"]["success"].as_bool() == Some(true) {
+        let updated = &result["data"]["issueUpdate"]["issue"];
+        println!(
+            "{} Started issue: {} {}",
+            "+".green(),
+            updated["identifier"].as_str().unwrap_or("").cyan(),
+            updated["title"].as_str().unwrap_or("")
+        );
+        println!(
+            "  State:    {}",
+            updated["state"]["name"].as_str().unwrap_or(state_name)
+        );
+        println!(
+            "  Assignee: {}",
+            updated["assignee"]["name"].as_str().unwrap_or("me")
+        );
+    } else {
+        anyhow::bail!("Failed to start issue");
+    }
+
+    // Optionally checkout a git branch
+    if checkout {
+        let branch_name = custom_branch
+            .or_else(|| if linear_branch.is_empty() { None } else { Some(linear_branch) })
+            .unwrap_or_else(|| generate_branch_name(identifier, title));
+
+        println!();
+        if branch_exists(&branch_name) {
+            println!("Checking out existing branch: {}", branch_name.green());
+            run_git_command(&["checkout", &branch_name])?;
+        } else {
+            println!("Creating and checking out branch: {}", branch_name.green());
+            run_git_command(&["checkout", "-b", &branch_name])?;
+        }
+
+        let current = run_git_command(&["rev-parse", "--abbrev-ref", "HEAD"])?;
+        println!("{} Now on branch: {}", "+".green(), current);
+    }
+
+    Ok(())
+}
+
+async fn stop_issue(id: &str, unassign: bool) -> Result<()> {
+    let client = LinearClient::new()?;
+
+    // First, get the issue details including team info to find the "backlog" or "unstarted" state
+    let query = r#"
+        query($id: String!) {
+            issue(id: $id) {
+                id
+                identifier
+                title
+                team {
+                    id
+                    states {
+                        nodes {
+                            id
+                            name
+                            type
+                        }
+                    }
+                }
+            }
+        }
+    "#;
+
+    let result = client.query(query, Some(json!({ "id": id }))).await?;
+    let issue = &result["data"]["issue"];
+
+    if issue.is_null() {
+        anyhow::bail!("Issue not found: {}", id);
+    }
+
+    // Find a "backlog" or "unstarted" type state
+    let empty = vec![];
+    let states = issue["team"]["states"]["nodes"]
+        .as_array()
+        .unwrap_or(&empty);
+
+    // Prefer backlog, fall back to unstarted
+    let stop_state = states
+        .iter()
+        .find(|s| s["type"].as_str() == Some("backlog"))
+        .or_else(|| states.iter().find(|s| s["type"].as_str() == Some("unstarted")));
+
+    let state_id = match stop_state {
+        Some(s) => s["id"].as_str().unwrap_or(""),
+        None => anyhow::bail!("No 'backlog' or 'unstarted' state found for this team"),
+    };
+
+    let state_name = stop_state
+        .and_then(|s| s["name"].as_str())
+        .unwrap_or("Backlog");
+
+    // Build the update input
+    let mut input = json!({
+        "stateId": state_id
+    });
+
+    // Optionally unassign
+    if unassign {
+        input["assigneeId"] = json!(null);
+    }
+
+    let mutation = r#"
+        mutation($id: String!, $input: IssueUpdateInput!) {
+            issueUpdate(id: $id, input: $input) {
+                success
+                issue {
+                    identifier
+                    title
+                    state { name }
+                    assignee { name }
+                }
+            }
+        }
+    "#;
+
+    let result = client
+        .mutate(mutation, Some(json!({ "id": id, "input": input })))
+        .await?;
+
+    if result["data"]["issueUpdate"]["success"].as_bool() == Some(true) {
+        let updated = &result["data"]["issueUpdate"]["issue"];
+        println!(
+            "{} Stopped issue: {} {}",
+            "+".green(),
+            updated["identifier"].as_str().unwrap_or("").cyan(),
+            updated["title"].as_str().unwrap_or("")
+        );
+        println!(
+            "  State:    {}",
+            updated["state"]["name"].as_str().unwrap_or(state_name)
+        );
+        if unassign {
+            println!("  Assignee: (unassigned)");
+        } else if let Some(assignee) = updated["assignee"]["name"].as_str() {
+            println!("  Assignee: {}", assignee);
+        }
+    } else {
+        anyhow::bail!("Failed to stop issue");
     }
 
     Ok(())

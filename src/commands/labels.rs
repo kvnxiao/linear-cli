@@ -5,6 +5,7 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
+use crate::OutputFormat;
 
 #[derive(Subcommand)]
 pub enum LabelCommands {
@@ -54,17 +55,17 @@ struct LabelRow {
     id: String,
 }
 
-pub async fn handle(cmd: LabelCommands) -> Result<()> {
+pub async fn handle(cmd: LabelCommands, output: OutputFormat) -> Result<()> {
     match cmd {
-        LabelCommands::List { r#type } => list_labels(&r#type).await,
+        LabelCommands::List { r#type } => list_labels(&r#type, output).await,
         LabelCommands::Create { name, r#type, color, parent } => {
-            create_label(&name, &r#type, &color, parent).await
+            create_label(&name, &r#type, &color, parent, output).await
         }
         LabelCommands::Delete { id, r#type, force } => delete_label(&id, &r#type, force).await,
     }
 }
 
-async fn list_labels(label_type: &str) -> Result<()> {
+async fn list_labels(label_type: &str, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = if label_type == "project" {
@@ -98,6 +99,13 @@ async fn list_labels(label_type: &str) -> Result<()> {
     let result = client.query(query, None).await?;
 
     let key = if label_type == "project" { "projectLabels" } else { "issueLabels" };
+
+    // Handle JSON output
+    if matches!(output, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(&result["data"][key]["nodes"])?);
+        return Ok(());
+    }
+
     let empty = vec![];
     let labels = result["data"][key]["nodes"]
         .as_array()
@@ -125,7 +133,7 @@ async fn list_labels(label_type: &str) -> Result<()> {
     Ok(())
 }
 
-async fn create_label(name: &str, label_type: &str, color: &str, parent: Option<String>) -> Result<()> {
+async fn create_label(name: &str, label_type: &str, color: &str, parent: Option<String>, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let mut input = json!({
@@ -164,7 +172,14 @@ async fn create_label(name: &str, label_type: &str, color: &str, parent: Option<
 
     if result["data"][key]["success"].as_bool() == Some(true) {
         let label = &result["data"][key][label_key];
-        println!("{} Created {} label: {}", "✓".green(), label_type, label["name"].as_str().unwrap_or(""));
+
+        // Handle JSON output
+        if matches!(output, OutputFormat::Json) {
+            println!("{}", serde_json::to_string_pretty(label)?);
+            return Ok(());
+        }
+
+        println!("{} Created {} label: {}", "+".green(), label_type, label["name"].as_str().unwrap_or(""));
         println!("  ID: {}", label["id"].as_str().unwrap_or(""));
     } else {
         anyhow::bail!("Failed to create label");
@@ -205,7 +220,7 @@ async fn delete_label(id: &str, label_type: &str, force: bool) -> Result<()> {
     let key = if label_type == "project" { "projectLabelDelete" } else { "issueLabelDelete" };
 
     if result["data"][key]["success"].as_bool() == Some(true) {
-        println!("{} Label deleted", "✓".green());
+        println!("{} Label deleted", "+".green());
     } else {
         anyhow::bail!("Failed to delete label");
     }

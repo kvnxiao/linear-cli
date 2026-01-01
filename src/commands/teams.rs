@@ -5,6 +5,7 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
+use crate::OutputFormat;
 
 #[derive(Subcommand)]
 pub enum TeamCommands {
@@ -28,14 +29,14 @@ struct TeamRow {
     id: String,
 }
 
-pub async fn handle(cmd: TeamCommands) -> Result<()> {
+pub async fn handle(cmd: TeamCommands, output: OutputFormat) -> Result<()> {
     match cmd {
-        TeamCommands::List => list_teams().await,
-        TeamCommands::Get { id } => get_team(&id).await,
+        TeamCommands::List => list_teams(output).await,
+        TeamCommands::Get { id } => get_team(&id, output).await,
     }
 }
 
-async fn list_teams() -> Result<()> {
+async fn list_teams(output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -51,6 +52,12 @@ async fn list_teams() -> Result<()> {
     "#;
 
     let result = client.query(query, None).await?;
+
+    // Handle JSON output
+    if matches!(output, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(&result["data"]["teams"]["nodes"])?);
+        return Ok(());
+    }
 
     let empty = vec![];
     let teams = result["data"]["teams"]["nodes"]
@@ -78,7 +85,7 @@ async fn list_teams() -> Result<()> {
     Ok(())
 }
 
-async fn get_team(id: &str) -> Result<()> {
+async fn get_team(id: &str, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -106,8 +113,14 @@ async fn get_team(id: &str) -> Result<()> {
         anyhow::bail!("Team not found: {}", id);
     }
 
+    // Handle JSON output
+    if matches!(output, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(team)?);
+        return Ok(());
+    }
+
     println!("{}", team["name"].as_str().unwrap_or("").bold());
-    println!("{}", "─".repeat(40));
+    println!("{}", "-".repeat(40));
 
     println!("Key: {}", team["key"].as_str().unwrap_or("-"));
 

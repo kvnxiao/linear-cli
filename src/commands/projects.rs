@@ -5,6 +5,7 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
+use crate::OutputFormat;
 
 #[derive(Subcommand)]
 pub enum ProjectCommands {
@@ -81,22 +82,22 @@ struct ProjectRow {
     id: String,
 }
 
-pub async fn handle(cmd: ProjectCommands) -> Result<()> {
+pub async fn handle(cmd: ProjectCommands, output: OutputFormat) -> Result<()> {
     match cmd {
-        ProjectCommands::List { archived } => list_projects(archived).await,
-        ProjectCommands::Get { id } => get_project(&id).await,
+        ProjectCommands::List { archived } => list_projects(archived, output).await,
+        ProjectCommands::Get { id } => get_project(&id, output).await,
         ProjectCommands::Create { name, team, description, color } => {
-            create_project(&name, &team, description, color).await
+            create_project(&name, &team, description, color, output).await
         }
         ProjectCommands::Update { id, name, description, color, icon } => {
-            update_project(&id, name, description, color, icon).await
+            update_project(&id, name, description, color, icon, output).await
         }
         ProjectCommands::Delete { id, force } => delete_project(&id, force).await,
-        ProjectCommands::AddLabels { id, labels } => add_labels(&id, labels).await,
+        ProjectCommands::AddLabels { id, labels } => add_labels(&id, labels, output).await,
     }
 }
 
-async fn list_projects(include_archived: bool) -> Result<()> {
+async fn list_projects(include_archived: bool, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -113,6 +114,12 @@ async fn list_projects(include_archived: bool) -> Result<()> {
     "#;
 
     let result = client.query(query, Some(json!({ "includeArchived": include_archived }))).await?;
+
+    // Handle JSON output
+    if matches!(output, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(&result["data"]["projects"]["nodes"])?);
+        return Ok(());
+    }
 
     let empty = vec![];
     let projects = result["data"]["projects"]["nodes"]
@@ -150,7 +157,7 @@ async fn list_projects(include_archived: bool) -> Result<()> {
     Ok(())
 }
 
-async fn get_project(id: &str) -> Result<()> {
+async fn get_project(id: &str, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -176,8 +183,14 @@ async fn get_project(id: &str) -> Result<()> {
         anyhow::bail!("Project not found: {}", id);
     }
 
+    // Handle JSON output
+    if matches!(output, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(project)?);
+        return Ok(());
+    }
+
     println!("{}", project["name"].as_str().unwrap_or("").bold());
-    println!("{}", "─".repeat(40));
+    println!("{}", "-".repeat(40));
 
     if let Some(summary) = project["summary"].as_str() {
         println!("Summary: {}", summary);
@@ -211,7 +224,7 @@ async fn get_project(id: &str) -> Result<()> {
     Ok(())
 }
 
-async fn create_project(name: &str, team: &str, description: Option<String>, color: Option<String>) -> Result<()> {
+async fn create_project(name: &str, team: &str, description: Option<String>, color: Option<String>, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let mut input = json!({
@@ -239,7 +252,14 @@ async fn create_project(name: &str, team: &str, description: Option<String>, col
 
     if result["data"]["projectCreate"]["success"].as_bool() == Some(true) {
         let project = &result["data"]["projectCreate"]["project"];
-        println!("{} Created project: {}", "✓".green(), project["name"].as_str().unwrap_or(""));
+
+        // Handle JSON output
+        if matches!(output, OutputFormat::Json) {
+            println!("{}", serde_json::to_string_pretty(project)?);
+            return Ok(());
+        }
+
+        println!("{} Created project: {}", "+".green(), project["name"].as_str().unwrap_or(""));
         println!("  ID: {}", project["id"].as_str().unwrap_or(""));
         println!("  URL: {}", project["url"].as_str().unwrap_or(""));
     } else {
@@ -255,6 +275,7 @@ async fn update_project(
     description: Option<String>,
     color: Option<String>,
     icon: Option<String>,
+    output: OutputFormat,
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
@@ -284,7 +305,15 @@ async fn update_project(
     let result = client.mutate(mutation, Some(json!({ "id": id, "input": input }))).await?;
 
     if result["data"]["projectUpdate"]["success"].as_bool() == Some(true) {
-        println!("{} Project updated", "✓".green());
+        let project = &result["data"]["projectUpdate"]["project"];
+
+        // Handle JSON output
+        if matches!(output, OutputFormat::Json) {
+            println!("{}", serde_json::to_string_pretty(project)?);
+            return Ok(());
+        }
+
+        println!("{} Project updated", "+".green());
     } else {
         anyhow::bail!("Failed to update project");
     }
@@ -312,7 +341,7 @@ async fn delete_project(id: &str, force: bool) -> Result<()> {
     let result = client.mutate(mutation, Some(json!({ "id": id }))).await?;
 
     if result["data"]["projectDelete"]["success"].as_bool() == Some(true) {
-        println!("{} Project deleted", "✓".green());
+        println!("{} Project deleted", "+".green());
     } else {
         anyhow::bail!("Failed to delete project");
     }
@@ -320,7 +349,7 @@ async fn delete_project(id: &str, force: bool) -> Result<()> {
     Ok(())
 }
 
-async fn add_labels(id: &str, label_ids: Vec<String>) -> Result<()> {
+async fn add_labels(id: &str, label_ids: Vec<String>, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let mutation = r#"
@@ -340,6 +369,13 @@ async fn add_labels(id: &str, label_ids: Vec<String>) -> Result<()> {
 
     if result["data"]["projectUpdate"]["success"].as_bool() == Some(true) {
         let project = &result["data"]["projectUpdate"]["project"];
+
+        // Handle JSON output
+        if matches!(output, OutputFormat::Json) {
+            println!("{}", serde_json::to_string_pretty(project)?);
+            return Ok(());
+        }
+
         let empty = vec![];
         let labels: Vec<&str> = project["labels"]["nodes"]
             .as_array()
@@ -347,7 +383,7 @@ async fn add_labels(id: &str, label_ids: Vec<String>) -> Result<()> {
             .iter()
             .filter_map(|l| l["name"].as_str())
             .collect();
-        println!("{} Labels updated: {}", "✓".green(), labels.join(", "));
+        println!("{} Labels updated: {}", "+".green(), labels.join(", "));
     } else {
         anyhow::bail!("Failed to add labels");
     }

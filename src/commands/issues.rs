@@ -8,10 +8,19 @@ use tabled::{Table, Tabled};
 use crate::api::{resolve_team_id, LinearClient};
 use crate::OutputFormat;
 
+use super::templates;
+
 #[derive(Subcommand)]
 pub enum IssueCommands {
     /// List issues
     #[command(alias = "ls")]
+    #[command(after_help = r#"EXAMPLES:
+    linear issues list                         # List all issues
+    linear i list -t ENG                       # Filter by team
+    linear i list -t ENG -s "In Progress"      # Filter by team and status
+    linear i list --assignee me                # Show my assigned issues
+    linear i list --project "My Project"       # Filter by project name
+    linear i list --output json                # Output as JSON"#)]
     List {
         /// Filter by team name or ID
         #[arg(short, long)]
@@ -22,6 +31,9 @@ pub enum IssueCommands {
         /// Filter by assignee (user ID, name, email, or "me")
         #[arg(short, long)]
         assignee: Option<String>,
+        /// Filter by project name
+        #[arg(long)]
+        project: Option<String>,
         /// Include archived issues
         #[arg(long)]
         archived: bool,
@@ -30,17 +42,26 @@ pub enum IssueCommands {
         limit: u32,
     },
     /// Get issue details
+    #[command(after_help = r#"EXAMPLES:
+    linear issues get LIN-123                  # View issue by identifier
+    linear i get abc123-uuid                   # View issue by ID
+    linear i get LIN-123 --output json         # Output as JSON"#)]
     Get {
         /// Issue ID or identifier (e.g., "LIN-123")
         id: String,
     },
     /// Create a new issue
+    #[command(after_help = r#"EXAMPLES:
+    linear issues create "Fix bug" -t ENG      # Create with title and team
+    linear i create "Feature" -t ENG -p 2      # Create with high priority
+    linear i create "Task" -t ENG -a me        # Assign to yourself
+    linear i create "Bug" -t ENG -s "Backlog"  # Set initial status"#)]
     Create {
         /// Issue title
         title: String,
-        /// Team name or ID
+        /// Team name or ID (can be provided via template)
         #[arg(short, long)]
-        team: String,
+        team: Option<String>,
         /// Issue description (markdown)
         #[arg(short, long)]
         description: Option<String>,
@@ -56,8 +77,16 @@ pub enum IssueCommands {
         /// Labels to add (can be specified multiple times)
         #[arg(short, long)]
         labels: Vec<String>,
+        /// Template name to use for default values
+        #[arg(long)]
+        template: Option<String>,
     },
     /// Update an existing issue
+    #[command(after_help = r#"EXAMPLES:
+    linear issues update LIN-123 -s Done       # Mark as done
+    linear i update LIN-123 -T "New title"     # Change title
+    linear i update LIN-123 -p 1               # Set to urgent priority
+    linear i update LIN-123 -a me              # Assign to yourself"#)]
     Update {
         /// Issue ID
         id: String,
@@ -78,6 +107,9 @@ pub enum IssueCommands {
         assignee: Option<String>,
     },
     /// Delete an issue
+    #[command(after_help = r#"EXAMPLES:
+    linear issues delete LIN-123               # Delete with confirmation
+    linear i delete LIN-123 --force            # Delete without confirmation"#)]
     Delete {
         /// Issue ID
         id: String,
@@ -86,6 +118,10 @@ pub enum IssueCommands {
         force: bool,
     },
     /// Start working on an issue (set to In Progress and assign to me)
+    #[command(after_help = r#"EXAMPLES:
+    linear issues start LIN-123                # Start working on issue
+    linear i start LIN-123 --checkout          # Start and checkout git branch
+    linear i start LIN-123 -c -b feature/fix   # Start with custom branch"#)]
     Start {
         /// Issue ID or identifier (e.g., "LIN-123")
         id: String,
@@ -97,6 +133,9 @@ pub enum IssueCommands {
         branch: Option<String>,
     },
     /// Stop working on an issue (return to backlog state)
+    #[command(after_help = r#"EXAMPLES:
+    linear issues stop LIN-123                 # Stop working on issue
+    linear i stop LIN-123 --unassign           # Stop and unassign"#)]
     Stop {
         /// Issue ID or identifier (e.g., "LIN-123")
         id: String,
@@ -126,9 +165,10 @@ pub async fn handle(cmd: IssueCommands, output: OutputFormat) -> Result<()> {
             team,
             state,
             assignee,
+            project,
             archived,
             limit,
-        } => list_issues(team, state, assignee, archived, limit, output).await,
+        } => list_issues(team, state, assignee, project, archived, limit, output).await,
         IssueCommands::Get { id } => get_issue(&id, output).await,
         IssueCommands::Create {
             title,
@@ -138,15 +178,51 @@ pub async fn handle(cmd: IssueCommands, output: OutputFormat) -> Result<()> {
             state,
             assignee,
             labels,
+            template,
         } => {
+            // Load template if specified
+            let tpl = if let Some(ref tpl_name) = template {
+                templates::get_template(tpl_name)?
+                    .ok_or_else(|| anyhow::anyhow!("Template not found: {}", tpl_name))?
+            } else {
+                templates::IssueTemplate {
+                    name: String::new(),
+                    title_prefix: None,
+                    description: None,
+                    default_priority: None,
+                    default_labels: vec![],
+                    team: None,
+                }
+            };
+
+            // Team from CLI arg takes precedence, then template, then error
+            let final_team = team
+                .or(tpl.team.clone())
+                .ok_or_else(|| anyhow::anyhow!("--team is required (or use a template with a default team)"))?;
+
+            // Build title with optional prefix from template
+            let final_title = if let Some(ref prefix) = tpl.title_prefix {
+                format!("{} {}", prefix, title)
+            } else {
+                title
+            };
+
+            // Merge template defaults with CLI args (CLI takes precedence)
+            let final_description = description.or(tpl.description.clone());
+            let final_priority = priority.or(tpl.default_priority);
+
+            // Merge labels: template labels + CLI labels
+            let mut final_labels = tpl.default_labels.clone();
+            final_labels.extend(labels);
+
             create_issue(
-                &title,
-                &team,
-                description,
-                priority,
+                &final_title,
+                &final_team,
+                final_description,
+                final_priority,
                 state,
                 assignee,
-                labels,
+                final_labels,
                 output,
             )
             .await
@@ -184,6 +260,7 @@ async fn list_issues(
     team: Option<String>,
     state: Option<String>,
     assignee: Option<String>,
+    project: Option<String>,
     include_archived: bool,
     limit: u32,
     output: OutputFormat,
@@ -191,14 +268,15 @@ async fn list_issues(
     let client = LinearClient::new()?;
 
     let query = r#"
-        query($team: String, $state: String, $assignee: String, $includeArchived: Boolean, $limit: Int) {
+        query($team: String, $state: String, $assignee: String, $project: String, $includeArchived: Boolean, $limit: Int) {
             issues(
                 first: $limit,
                 includeArchived: $includeArchived,
                 filter: {
                     team: { name: { eqIgnoreCase: $team } },
                     state: { name: { eqIgnoreCase: $state } },
-                    assignee: { name: { eqIgnoreCase: $assignee } }
+                    assignee: { name: { eqIgnoreCase: $assignee } },
+                    project: { name: { eqIgnoreCase: $project } }
                 }
             ) {
                 nodes {
@@ -226,6 +304,9 @@ async fn list_issues(
     }
     if let Some(a) = assignee {
         variables["assignee"] = json!(a);
+    }
+    if let Some(p) = project {
+        variables["project"] = json!(p);
     }
 
     let result = client.query(query, Some(variables)).await?;
@@ -386,14 +467,21 @@ async fn create_issue(
 ) -> Result<()> {
     let client = LinearClient::new()?;
 
+    // Determine the final team (CLI arg takes precedence, then template, then error)
+    let final_team = team;
+
     // Resolve team key/name to UUID
-    let team_id = resolve_team_id(&client, team).await?;
+    let team_id = resolve_team_id(&client, final_team).await?;
+
+    // Build the title with optional prefix from template
+    let final_title = title.to_string();
 
     let mut input = json!({
-        "title": title,
+        "title": final_title,
         "teamId": team_id
     });
 
+    // CLI args override template values
     if let Some(desc) = description {
         input["description"] = json!(desc);
     }
@@ -407,7 +495,18 @@ async fn create_issue(
         input["assigneeId"] = json!(a);
     }
     if !labels.is_empty() {
-        input["labelIds"] = json!(labels);
+        // Merge with template labels if present
+        let existing: Vec<String> = input["labelIds"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mut all_labels = existing;
+        all_labels.extend(labels);
+        input["labelIds"] = json!(all_labels);
     }
 
     let mutation = r#"

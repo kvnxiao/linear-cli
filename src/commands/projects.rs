@@ -11,17 +11,29 @@ use crate::OutputFormat;
 pub enum ProjectCommands {
     /// List all projects
     #[command(alias = "ls")]
+    #[command(after_help = r#"EXAMPLES:
+    linear projects list                       # List all projects
+    linear p list --archived                   # Include archived projects
+    linear p list --output json                # Output as JSON"#)]
     List {
         /// Show archived projects
         #[arg(short, long)]
         archived: bool,
     },
     /// Get project details
+    #[command(after_help = r#"EXAMPLES:
+    linear projects get PROJECT_ID             # View by ID
+    linear p get "Q1 Roadmap"                  # View by name
+    linear p get PROJECT_ID --output json      # Output as JSON"#)]
     Get {
         /// Project ID or name
         id: String,
     },
     /// Create a new project
+    #[command(after_help = r##"EXAMPLES:
+    linear projects create "Q1 Roadmap" -t ENG # Create project
+    linear p create "Feature" -t ENG -d "Desc" # With description
+    linear p create "UI" -t ENG -c "#FF5733"   # With color"##)]
     Create {
         /// Project name
         name: String,
@@ -36,6 +48,9 @@ pub enum ProjectCommands {
         color: Option<String>,
     },
     /// Update a project
+    #[command(after_help = r#"EXAMPLES:
+    linear projects update ID -n "New Name"    # Rename project
+    linear p update ID -d "New description"    # Update description"#)]
     Update {
         /// Project ID
         id: String,
@@ -53,6 +68,9 @@ pub enum ProjectCommands {
         icon: Option<String>,
     },
     /// Delete a project
+    #[command(after_help = r#"EXAMPLES:
+    linear projects delete PROJECT_ID          # Delete with confirmation
+    linear p delete PROJECT_ID --force         # Delete without confirmation"#)]
     Delete {
         /// Project ID
         id: String,
@@ -61,6 +79,9 @@ pub enum ProjectCommands {
         force: bool,
     },
     /// Add labels to a project
+    #[command(after_help = r#"EXAMPLES:
+    linear projects add-labels ID LABEL_ID     # Add one label
+    linear p add-labels ID L1 L2 L3            # Add multiple labels"#)]
     AddLabels {
         /// Project ID
         id: String,
@@ -172,7 +193,6 @@ async fn get_project(id: &str, output: OutputFormat) -> Result<()> {
                 id
                 name
                 description
-                summary
                 icon
                 color
                 url
@@ -198,9 +218,6 @@ async fn get_project(id: &str, output: OutputFormat) -> Result<()> {
     println!("{}", project["name"].as_str().unwrap_or("").bold());
     println!("{}", "-".repeat(40));
 
-    if let Some(summary) = project["summary"].as_str() {
-        println!("Summary: {}", summary);
-    }
     if let Some(desc) = project["description"].as_str() {
         println!(
             "Description: {}",

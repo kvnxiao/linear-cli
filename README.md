@@ -85,6 +85,7 @@ linear-cli issues create "Fix login bug" --team Engineering --priority 2
 | `statuses` | `st` | View issue statuses |
 | `git` | `g` | Git branch operations and PR creation |
 | `jj` | `j` | Jujutsu VCS operations |
+| `uploads` | `up` | Fetch uploads/attachments from Linear |
 | `workspace` | `ws` | Manage multiple workspaces |
 | `interactive` | `ui` | Interactive TUI mode |
 | `bulk` | `b` | Bulk operations on issues |
@@ -164,6 +165,21 @@ linear-cli sy push -t Engineering --dry-run    # Preview without creating
 ```bash
 linear-cli s issues "authentication bug"
 linear-cli s projects "backend" --limit 10
+```
+
+### Uploads
+
+Download attachments and images from Linear issues/comments:
+
+```bash
+# Download to file
+linear-cli up fetch "https://uploads.linear.app/..." -o image.png
+
+# Output to stdout (for piping to other tools)
+linear-cli up fetch "https://uploads.linear.app/..." | base64
+
+# Useful for AI agents that need to view images
+linear-cli uploads fetch URL -o /tmp/screenshot.png
 ```
 
 ### Other Commands

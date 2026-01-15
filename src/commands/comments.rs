@@ -5,6 +5,7 @@ use serde_json::json;
 use tabled::{Table, Tabled};
 
 use crate::api::LinearClient;
+use crate::OutputFormat;
 
 #[derive(Subcommand)]
 pub enum CommentCommands {
@@ -39,9 +40,9 @@ struct CommentRow {
     id: String,
 }
 
-pub async fn handle(cmd: CommentCommands) -> Result<()> {
+pub async fn handle(cmd: CommentCommands, output: OutputFormat) -> Result<()> {
     match cmd {
-        CommentCommands::List { issue_id } => list_comments(&issue_id).await,
+        CommentCommands::List { issue_id } => list_comments(&issue_id, output).await,
         CommentCommands::Create {
             issue_id,
             body,
@@ -50,7 +51,7 @@ pub async fn handle(cmd: CommentCommands) -> Result<()> {
     }
 }
 
-async fn list_comments(issue_id: &str) -> Result<()> {
+async fn list_comments(issue_id: &str, output: OutputFormat) -> Result<()> {
     let client = LinearClient::new()?;
 
     let query = r#"
@@ -79,6 +80,12 @@ async fn list_comments(issue_id: &str) -> Result<()> {
 
     if issue.is_null() {
         anyhow::bail!("Issue not found: {}", issue_id);
+    }
+
+    // JSON output - return raw data for LLM consumption
+    if matches!(output, OutputFormat::Json) {
+        println!("{}", serde_json::to_string_pretty(&issue)?);
+        return Ok(());
     }
 
     let identifier = issue["identifier"].as_str().unwrap_or("");

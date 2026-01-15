@@ -300,7 +300,7 @@ async fn main() -> Result<()> {
         Commands::Teams { action } => teams::handle(action, output).await?,
         Commands::Users { action } => users::handle(action).await?,
         Commands::Cycles { action } => cycles::handle(action).await?,
-        Commands::Comments { action } => comments::handle(action).await?,
+        Commands::Comments { action } => comments::handle(action, output).await?,
         Commands::Documents { action } => documents::handle(action).await?,
         Commands::Search { action } => search::handle(action).await?,
         Commands::Sync { action } => sync::handle(action).await?,

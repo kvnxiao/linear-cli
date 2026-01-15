@@ -196,9 +196,9 @@ pub async fn handle(cmd: IssueCommands, output: OutputFormat) -> Result<()> {
             };
 
             // Team from CLI arg takes precedence, then template, then error
-            let final_team = team
-                .or(tpl.team.clone())
-                .ok_or_else(|| anyhow::anyhow!("--team is required (or use a template with a default team)"))?;
+            let final_team = team.or(tpl.team.clone()).ok_or_else(|| {
+                anyhow::anyhow!("--team is required (or use a template with a default team)")
+            })?;
 
             // Build title with optional prefix from template
             let final_title = if let Some(ref prefix) = tpl.title_prefix {

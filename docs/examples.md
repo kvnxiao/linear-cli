@@ -79,13 +79,13 @@ Download attachments and images from Linear issues/comments:
 
 ```bash
 # Download to file
-linear-cli up fetch "https://uploads.linear.app/..." -o image.png
+linear-cli up fetch "https://uploads.linear.app/..." -f image.png
 
 # Output to stdout (for piping to other tools)
 linear-cli up fetch "https://uploads.linear.app/..." | base64
 
 # Useful for AI agents that need to view images
-linear-cli uploads fetch URL -o /tmp/screenshot.png
+linear-cli uploads fetch URL -f /tmp/screenshot.png
 ```
 
 ## Other Commands

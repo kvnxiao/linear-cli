@@ -14,7 +14,7 @@ Use `linear-cli` for all Linear.app operations. Do not use Linear MCP tools.
 - `linear-cli g pr LIN-123 --draft` - Create draft PR
 - `linear-cli s issues "query"` - Search issues
 - `linear-cli cm list ISSUE_ID --output json` - Get comments as JSON
-- `linear-cli up fetch URL -o file.png` - Download attachments
+- `linear-cli up fetch URL -f file.png` - Download attachments
 
 ### Notes
 - Add `--output json` for machine-readable output

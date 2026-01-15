@@ -12,10 +12,10 @@ Download attachments and images from Linear issues using `linear-cli`.
 
 ```bash
 # Download image/attachment to file
-linear-cli up fetch "https://uploads.linear.app/..." -o image.png
+linear-cli up fetch "https://uploads.linear.app/..." -f image.png
 
 # Download screenshot
-linear-cli up fetch "https://uploads.linear.app/abc/def/screenshot.png" -o /tmp/screenshot.png
+linear-cli up fetch "https://uploads.linear.app/abc/def/screenshot.png" -f /tmp/screenshot.png
 ```
 
 ## Output to Stdout
@@ -36,8 +36,24 @@ Upload URLs are found in:
 
 URLs follow pattern: `https://uploads.linear.app/{org}/{upload}/{filename}`
 
+## When to Use Each Mode
+
+**Use `-f` (file) when Claude needs to view the image:**
+```bash
+# Download to /tmp, then use Read tool to view
+linear-cli up fetch "https://uploads.linear.app/..." -f /tmp/screenshot.png
+# Then: Read tool on /tmp/screenshot.png (Claude is multimodal)
+```
+
+**Use stdout when piping to other CLI tools:**
+```bash
+# Pipe to base64, imagemagick, etc.
+linear-cli up fetch "https://uploads.linear.app/..." | base64
+```
+
 ## Tips
 
 - Requires valid Linear API key
-- Use `-o` to specify output filename
-- Without `-o`, outputs raw bytes to stdout
+- Use `-f` to specify output filename
+- Without `-f`, outputs raw bytes to stdout
+- Claude cannot interpret raw stdout bytes—always use `-f` + Read tool to view images

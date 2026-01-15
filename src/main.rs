@@ -220,7 +220,7 @@ enum Commands {
     #[command(alias = "up")]
     #[command(after_help = r#"EXAMPLES:
     linear uploads fetch URL                # Output to stdout (for piping)
-    linear up fetch URL -o file.png         # Save to file
+    linear up fetch URL -f file.png         # Save to file
     linear up fetch URL | base64            # Pipe to another tool"#)]
     Uploads {
         #[command(subcommand)]

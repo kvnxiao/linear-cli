@@ -13,18 +13,18 @@ pub enum UploadCommands {
         url: String,
 
         /// Output file path (if not specified, outputs to stdout)
-        #[arg(short, long)]
-        output: Option<String>,
+        #[arg(short = 'f', long)]
+        file: Option<String>,
     },
 }
 
 pub async fn handle(cmd: UploadCommands) -> Result<()> {
     match cmd {
-        UploadCommands::Fetch { url, output } => fetch_upload(&url, output).await,
+        UploadCommands::Fetch { url, file } => fetch_upload(&url, file).await,
     }
 }
 
-async fn fetch_upload(url: &str, output: Option<String>) -> Result<()> {
+async fn fetch_upload(url: &str, file: Option<String>) -> Result<()> {
     // Validate URL is a Linear upload URL
     if !url.starts_with("https://uploads.linear.app/") {
         anyhow::bail!(
@@ -38,7 +38,7 @@ async fn fetch_upload(url: &str, output: Option<String>) -> Result<()> {
         .await
         .context("Failed to fetch upload from Linear")?;
 
-    if let Some(file_path) = output {
+    if let Some(file_path) = file {
         // Write to file
         std::fs::write(&file_path, &bytes)
             .with_context(|| format!("Failed to write to file: {}", file_path))?;
